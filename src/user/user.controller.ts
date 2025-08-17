@@ -8,13 +8,13 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
-@UseGuards(JwtAuthGuard, RolesGuard)  
-@Roles('admin')                      
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles()
 @Controller('users')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(private readonly userService: UserService) { }
 
-  @Roles() // PERMITE NAO ADMIN
+  @Roles('admin')
   @Post()
   create(@Body() createUserDto: CreateUserDto) {
     return this.userService.create(createUserDto);
@@ -25,19 +25,28 @@ export class UserController {
     return this.userService.findAll();
   }
 
-  @Roles() // PERMITE NAO ADMIN
+  @Roles('admin')
+  @Get('system')
+  findSystem() {
+    return this.userService.findSystem();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.userService.findOne(id);
   }
 
+  @Roles('admin')
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.userService.update(id, updateUserDto);
   }
 
+  @Roles('admin')
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.userService.remove(id);
   }
+
+
 }

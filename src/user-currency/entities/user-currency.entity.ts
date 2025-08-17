@@ -5,7 +5,6 @@ import {
 import { User } from 'src/user/entities/user.entity';
 import { Currency } from 'src/currency/entities/currency.entity';
 
-// helper para garantir 2 casas decimais:
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 @Entity('user_currencies')
@@ -22,7 +21,7 @@ export class UserCurrency {
   @Column('uuid')
   currencyId: string;
 
-  // Use NUMERIC(18,2) para evitar erro binário do double
+  // NUMERIC(18,2) para evitar erro binário do double
   @Column({
     type: 'numeric', precision: 18, scale: 2, default: 0,
     transformer: {

@@ -17,6 +17,7 @@ type UserWithBalances = User & {
     currencyId: string;
     code: string;
     name: string;
+    color: string;
     amount: number; // 2 casas
   }>;
 };
@@ -78,42 +79,44 @@ export class UserService {
     }
   }
 
-  // LISTAR todos com balances
+  // LISTAR todos (exclui isSystem)
   async findAll(): Promise<UserWithBalances[]> {
-    const users = await this.userRepository.find();
+    const users = await this.userRepository.find({ where: { isSystem: false } });
     if (users.length === 0) return [];
-
-    const usersWithBalances = await this.attachBalances(users);
-    return usersWithBalances;
+    return this.attachBalances(users);
   }
 
-  // BUSCAR por email (retorna com balances)
+  // BUSCAR por email (exclui isSystem)
   async findByEmail(email: string): Promise<UserWithBalances | null> {
-    const user = await this.userRepository.findOne({ where: { email } });
+    const user = await this.userRepository.findOne({ where: { email, isSystem: false } });
     if (!user) return null;
     const [withBalances] = await this.attachBalances([user]);
     return withBalances;
   }
 
-  // BUSCAR por id (retorna com balances)
+  // BUSCAR por id (exclui isSystem)
   async findOne(id: string): Promise<UserWithBalances> {
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userRepository.findOne({ where: { id, isSystem: false } });
     if (!user) throw new NotFoundException('Usuário não encontrado');
     const [withBalances] = await this.attachBalances([user]);
     return withBalances;
   }
 
+  // UPDATE (opcionalmente blinda system user)
   async update(id: string, updateUserDto: UpdateUserDto): Promise<UserWithBalances> {
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userRepository.findOne({ where: { id, isSystem: false } });
     if (!user) throw new NotFoundException('Usuário não encontrado');
-
     Object.assign(user, updateUserDto);
     const saved = await this.userRepository.save(user);
     const [withBalances] = await this.attachBalances([saved]);
     return withBalances;
   }
 
+  // DELETE (opcionalmente blinda system user)
   async remove(id: string): Promise<void> {
+    // só remove se NÃO for system
+    const user = await this.userRepository.findOne({ where: { id, isSystem: false } });
+    if (!user) throw new NotFoundException('Usuário não encontrado');
     await this.userRepository.delete(id);
   }
 
@@ -123,63 +126,50 @@ export class UserService {
    */
   private async attachBalances(users: User[]): Promise<UserWithBalances[]> {
     const userIds = users.map((u) => u.id);
-    // Busca todos os saldos dos usuários informados, já com join nas moedas
+
+    // 1) Moedas já ordenadas por criação (ordem canônica do output)
+    const currencies = await this.currencyRepository.find({
+      order: { createdAt: 'ASC' },
+      select: ['id', 'code', 'name', 'color', 'createdAt'],
+    });
+
+    // 2) Saldos existentes dos usuários (sem join, só o necessário)
     const rows = await this.userCurrencyRepository
       .createQueryBuilder('uc')
-      .leftJoin(Currency, 'c', 'c.id = uc.currencyId')
       .select([
         'uc.userId AS "userId"',
         'uc.currencyId AS "currencyId"',
-        'uc.amount AS "amount"',
-        'c.code AS "code"',
-        'c.name AS "name"',
+        'uc.amount AS "amount"', // numeric -> string
       ])
       .where('uc.userId IN (:...userIds)', { userIds })
-      .getRawMany<{
-        userId: string;
-        currencyId: string;
-        amount: string;
-        code: string;
-        name: string;
-      }>();
+      .getRawMany<{ userId: string; currencyId: string; amount: string }>();
 
-    // Agrupa por userId
-    const byUser: Record<string, UserWithBalances['balances']> = {};
+    // 3) Indexa saldos por usuário -> (currencyId -> amount)
+    const amountsByUser: Record<string, Map<string, number>> = {};
     for (const r of rows) {
-      const list = byUser[r.userId] || (byUser[r.userId] = []);
-      list.push({
-        currencyId: r.currencyId,
-        code: r.code,
-        name: r.name,
-        amount: round2(Number(r.amount)),
-      });
+      const map = amountsByUser[r.userId] || (amountsByUser[r.userId] = new Map());
+      map.set(r.currencyId, round2(Number(r.amount)));
     }
 
-    // Para moedas que ainda não têm registro (teoricamente não ocorre
-    // porque criamos tudo no create), você pode opcionalmente preencher 0
-    // consultando todas as moedas. Se quiser garantir:
-    const allCurrencies = await this.currencyRepository.find();
-    const ensureAllBalances = (userId: string, balances: UserWithBalances['balances']) => {
-      const map = new Map(balances.map(b => [b.currencyId, b]));
-      for (const c of allCurrencies) {
-        if (!map.has(c.id)) {
-          balances.push({
-            currencyId: c.id,
-            code: c.code,
-            name: c.name,
-            amount: 0,
-          });
-        }
-      }
-      // opcional: ordenar por code
-      balances.sort((a, b) => a.code.localeCompare(b.code));
-      return balances;
-    };
-
-    // Monta resposta final
+    // 4) Monta a resposta final seguindo a ordem de `currencies`
     return users.map((u) => {
-      const balances = ensureAllBalances(u.id, byUser[u.id] ?? []);
+      const map = amountsByUser[u.id] || new Map<string, number>();
+      const balances = currencies.map((c) => ({
+        currencyId: c.id,
+        code: c.code,
+        name: c.name,
+        color: c.color,                         // 👈 incluído
+        amount: map.get(c.id) ?? 0,             // moedas sem registro => 0
+      }));
       return { ...(u as any), balances };
     });
+  }
+
+
+  async findSystem(): Promise<UserWithBalances> {
+    const user = await this.userRepository.findOne({ where: { isSystem: true } });
+    if (!user) throw new NotFoundException('Usuário do sistema não encontrado');
+    const [withBalances] = await this.attachBalances([user]);
+    return withBalances;
   }
 }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserCurrency } from './entities/user-currency.entity';
+import { Currency } from '../currency/entities/currency.entity';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -10,6 +11,9 @@ export class UserCurrencyService {
   constructor(
     @InjectRepository(UserCurrency)
     private readonly repo: Repository<UserCurrency>,
+
+    @InjectRepository(Currency)
+    private readonly currencyRepo: Repository<Currency>,
   ) { }
 
   async getOrCreate(userId: string, currencyId: string) {
@@ -77,6 +81,46 @@ export class UserCurrencyService {
     const uc = await this.getOrCreate(userId, currencyId);
     uc.amount = to2(amount);
     return this.repo.save(uc);
+  }
+
+  async listAllForUser(userId: string) {
+    // pega saldos existentes do usuário + metadados da moeda
+    const rows = await this.repo
+      .createQueryBuilder('uc')
+      .leftJoin(Currency, 'c', 'c.id = uc.currencyId')
+      .select([
+        'uc.currencyId AS "currencyId"',
+        'uc.amount AS "amount"',  // numeric -> string no PG
+        'c.code AS "code"',
+        'c.name AS "name"',
+        'c.color AS "color"',
+      ])
+      .where('uc.userId = :userId', { userId })
+      .getRawMany<{
+        currencyId: string;
+        amount: string;
+        code: string;
+        name: string;
+        color: string;
+      }>();
+
+    const amountByCurrencyId = new Map<string, number>();
+    for (const r of rows) {
+      amountByCurrencyId.set(r.currencyId, round2(Number(r.amount)));
+    }
+
+    // garante que TODAS as moedas apareçam (as que não têm registro vêm com 0)
+    const allCurrencies = await this.currencyRepo.find();
+
+    return allCurrencies
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map((c) => ({
+        currencyId: c.id,
+        code: c.code,
+        name: c.name,
+        color: c.color,
+        amount: amountByCurrencyId.get(c.id) ?? 0,
+      }));
   }
 
 }

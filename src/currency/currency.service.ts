@@ -14,7 +14,7 @@ export class CurrencyService {
   constructor(
     @InjectRepository(Currency)
     private readonly repo: Repository<Currency>,
-  ) {}
+  ) { }
 
   async create(dto: CreateCurrencyDto): Promise<Currency> {
     try {
@@ -27,7 +27,7 @@ export class CurrencyService {
 
       const currency = this.repo.create({
         ...dto,
-        factorToBase: String(factor), 
+        factorToBase: String(factor),
       });
 
       return await this.repo.save(currency);
@@ -84,7 +84,7 @@ export class CurrencyService {
     return c;
   }
 
-   async setRate(code: string, factorToBase: number) {
+  async setRate(code: string, factorToBase: number) {
     const factor = to6(Number(factorToBase));
     if (!factor || factor <= 0) {
       throw new BadRequestException('factorToBase inválido (precisa ser > 0).');
@@ -112,8 +112,8 @@ export class CurrencyService {
       throw new BadRequestException('factorToBase inválido para alguma moeda');
     }
 
-    const rate = fFrom / fTo;
-    const result = round2(amount * rate);
+    const rate = fTo / fFrom;
+    const result = round2(fFrom / fTo * amount);
 
     return {
       fromCode,
