@@ -1,10 +1,13 @@
 // src/currency/currency.service.ts
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Currency } from './entities/currency.entity';
 import { CreateCurrencyDto } from './dto/create-currency.dto';
 import { UpdateCurrencyDto } from './dto/update-currency.dto';
+
+const to6 = (n: number) => Number.isFinite(n) ? Math.round(n * 1_000_000) / 1_000_000 : NaN;
+const round2 = (n: number) => Math.round(Number(n ?? 0) * 100) / 100;
 
 @Injectable()
 export class CurrencyService {
@@ -15,7 +18,18 @@ export class CurrencyService {
 
   async create(dto: CreateCurrencyDto): Promise<Currency> {
     try {
-      const currency = this.repo.create(dto);
+      const factor =
+        dto.factorToBase === undefined ? 1 : to6(Number(dto.factorToBase));
+
+      if (!factor || factor <= 0) {
+        throw new BadRequestException('factorToBase inválido (precisa ser > 0).');
+      }
+
+      const currency = this.repo.create({
+        ...dto,
+        factorToBase: String(factor), 
+      });
+
       return await this.repo.save(currency);
     } catch (e: any) {
       if (e?.code === '23505') {
@@ -36,13 +50,20 @@ export class CurrencyService {
     return c;
   }
 
-  findByCode(code: string): Promise<Currency | null> {
-    return this.repo.findOne({ where: { code } });
-  }
-
   async update(id: string, dto: UpdateCurrencyDto): Promise<Currency> {
     const currency = await this.findOne(id);
+
+    if (dto.factorToBase !== undefined) {
+      const factor = to6(Number(dto.factorToBase));
+      if (!factor || factor <= 0) {
+        throw new BadRequestException('factorToBase inválido (precisa ser > 0).');
+      }
+      (currency as any).factorToBase = String(factor);
+      delete (dto as any).factorToBase; // evita sobrepor abaixo
+    }
+
     Object.assign(currency, dto);
+
     try {
       return await this.repo.save(currency);
     } catch (e: any) {
@@ -55,5 +76,51 @@ export class CurrencyService {
 
   async remove(id: string): Promise<void> {
     await this.repo.delete(id);
+  }
+
+  async findByCodeOrThrow(code: string): Promise<Currency> {
+    const c = await this.repo.findOne({ where: { code } });
+    if (!c) throw new NotFoundException(`Moeda ${code} não encontrada`);
+    return c;
+  }
+
+   async setRate(code: string, factorToBase: number) {
+    const factor = to6(Number(factorToBase));
+    if (!factor || factor <= 0) {
+      throw new BadRequestException('factorToBase inválido (precisa ser > 0).');
+    }
+    const c = await this.findByCodeOrThrow(code);
+    c.factorToBase = String(factor); // salvar como string para numeric
+    return this.repo.save(c);
+  }
+
+  /** Simula conversão */
+  async previewConvert(fromCode: string, toCode: string, amount: number) {
+    if (amount <= 0) {
+      throw new BadRequestException('amount deve ser > 0');
+    }
+    if (fromCode === toCode) {
+      return { fromCode, toCode, amount: round2(amount), rate: 1, result: round2(amount) };
+    }
+
+    const from = await this.findByCodeOrThrow(fromCode);
+    const to = await this.findByCodeOrThrow(toCode);
+
+    const fFrom = Number(from.factorToBase); // numeric -> string
+    const fTo = Number(to.factorToBase);
+    if (!fFrom || !fTo) {
+      throw new BadRequestException('factorToBase inválido para alguma moeda');
+    }
+
+    const rate = fFrom / fTo;
+    const result = round2(amount * rate);
+
+    return {
+      fromCode,
+      toCode,
+      amount: round2(amount),
+      rate,
+      result,
+    };
   }
 }

@@ -6,6 +6,8 @@ import { UpdateCurrencyDto } from './dto/update-currency.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { SetRateDto } from './dto/set-rate.dto';
+import { ConvertPreviewDto } from './dto/convert-preview.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('currencies')
@@ -39,5 +41,23 @@ export class CurrencyController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.currencyService.remove(id);
+  }
+
+  @Roles()
+  @Get('code/:code')
+  findByCode(@Param('code') code: string) {
+    return this.currencyService.findByCodeOrThrow(code);
+  }
+
+  @Roles('admin')
+  @Post('rate')
+  setRate(@Body() dto: SetRateDto) {
+    return this.currencyService.setRate(dto.code, dto.factorToBase);
+  }
+
+  @Roles()
+  @Post('convert-preview')
+  preview(@Body() dto: ConvertPreviewDto) {
+    return this.currencyService.previewConvert(dto.fromCode, dto.toCode, dto.amount);
   }
 }

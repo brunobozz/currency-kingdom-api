@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsPositive, IsString, Matches, Min } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, Matches, Min } from 'class-validator';
 
 export class CreateCurrencyDto {
   @IsString()
@@ -7,7 +7,7 @@ export class CreateCurrencyDto {
 
   @IsString()
   @IsNotEmpty()
-  code: string; // ex: 'Or$' / 'Tb$' (único)
+  code: string;
 
   @IsNumber()
   @Min(0)
@@ -20,4 +20,9 @@ export class CreateCurrencyDto {
   @IsString()
   @Matches(/^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$/, { message: 'color deve ser um hex válido, ex: #D49000' })
   color: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.000001)
+  factorToBase?: number;
 }

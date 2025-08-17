@@ -17,6 +17,9 @@ export class Currency {
   @Column({ length: 16 })
   color: string;
 
+  @Column({ type: 'numeric', precision: 18, scale: 6, default: 1 })
+  factorToBase: string;
+
   @CreateDateColumn()
   createdAt: Date;
 
