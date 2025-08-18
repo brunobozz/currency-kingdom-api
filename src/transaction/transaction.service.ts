@@ -12,6 +12,22 @@ const round2 = (n: number) => Math.round(Number(n ?? 0) * 100) / 100;
 const to6 = (n: number) => Number.isFinite(n) ? Math.round(n * 1_000_000) / 1_000_000 : NaN;
 const FEE_PERCENT = 0.005; // 0,5%
 
+const DEFAULT_TZ = 'America/Sao_Paulo';
+
+// "DD/MM/YYYY HH:mm:ss" no fuso desejado, forçando 24h
+function toLocal24(date: Date, tz = DEFAULT_TZ): string {
+  const parts = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(date).reduce<Record<string, string>>((acc, p) => {
+    acc[p.type] = p.value; return acc;
+  }, {});
+  // return `${parts.day}/${parts.month}/${parts.year} - ${parts.hour}:${parts.minute}:${parts.second}`;
+  return `${parts.day}/${parts.month} - ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
 @Injectable()
 export class TransactionService {
   constructor(
@@ -73,43 +89,100 @@ export class TransactionService {
     return this.repo.save(tx);
   }
 
-  async findAll(params: { userId?: string; page?: number; limit?: number }) {
-    const { userId, page = 1, limit = 20 } = params || {};
+  async findAll(params: {
+    userId?: string; page?: number; limit?: number;
+    orderBy?: any; order?: any; term?: string;
+    date?: string; currencyOrigin?: string; currencyDestiny?: string;
+    tz?: string; // 👈 novo: fuso opcional
+  }) {
+    const {
+      userId,
+      page = 1,
+      limit = 20,
+      orderBy = 'createdAt',
+      order = 'DESC',
+      term,
+      date,
+      currencyOrigin,
+      currencyDestiny,
+      tz = DEFAULT_TZ, // 👈 padrão
+    } = params || {};
 
     const qb = this.repo
       .createQueryBuilder('t')
-      // user: só os campos necessários
-      .leftJoin('t.user', 'u')
-      .addSelect(['u.id', 'u.name', 'u.email'])
-      // moedas: pegue também metadados úteis
-      .leftJoin('t.fromCurrency', 'fc')
-      .addSelect(['fc.id', 'fc.code', 'fc.name', 'fc.color'])
-      .leftJoin('t.toCurrency', 'tc')
-      .addSelect(['tc.id', 'tc.code', 'tc.name', 'tc.color']);
+      .leftJoin('t.user', 'u').addSelect(['u.id', 'u.name', 'u.email'])
+      .leftJoin('t.fromCurrency', 'fc').addSelect(['fc.id', 'fc.code', 'fc.name', 'fc.color'])
+      .leftJoin('t.toCurrency', 'tc').addSelect(['tc.id', 'tc.code', 'tc.name', 'tc.color']);
 
-    if (userId) {
-      qb.where('t.userId = :userId', { userId });
+    if (userId) qb.andWhere('t.userId = :userId', { userId });
+
+    if (term && term.trim()) {
+      const t = `%${term.trim().toLowerCase()}%`;
+      qb.andWhere('(LOWER(u.name) LIKE :t OR LOWER(u.email) LIKE :t)', { t });
     }
 
-    qb.orderBy('t.createdAt', 'DESC')
+    // Dia local com timezone() 
+    if (date) {
+      qb.andWhere(
+        `timezone(CAST(:tz AS text), t."createdAt") >= CAST(:date AS date)
+     AND timezone(CAST(:tz AS text), t."createdAt") < (CAST(:date AS date) + INTERVAL '1 day')`,
+        { tz, date },
+      );
+    }
+
+    const norm = (s?: string) => (s ?? '').replace(/\$/g, '').trim().toUpperCase();
+    if (currencyOrigin && norm(currencyOrigin)) qb.andWhere('UPPER(fc.code) = :fcCode', { fcCode: norm(currencyOrigin) });
+    if (currencyDestiny && norm(currencyDestiny)) qb.andWhere('UPPER(tc.code) = :tcCode', { tcCode: norm(currencyDestiny) });
+
+    const orderMap: Record<string, string> = {
+      createdAt: 't.createdAt',
+      fromAmount: 't.fromAmount',
+      toAmountGross: 't.toAmountGross',
+      toAmountNet: 't.toAmountNet',
+    };
+    const orderColumn = orderMap[orderBy] ?? 't.createdAt';
+    const orderDir = (String(order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC') as 'ASC' | 'DESC';
+
+    qb.orderBy(orderColumn, orderDir)
       .skip((page - 1) * limit)
       .take(limit);
 
-    const [data, total] = await qb.getManyAndCount();
+    const [rows, total] = await qb.getManyAndCount();
+
+    const data = rows.map(tx => ({
+      ...tx,
+      createdAtLocal: toLocal24(tx.createdAt, tz), // 👈 sempre 24h no fuso
+    }));
 
     return {
-      data, // cada item tem: user { id, name, email }, fromCurrency, toCurrency
-      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        orderBy,
+        order: orderDir,
+        term: term ?? null,
+        date: date ?? null,
+        currencyOrigin: currencyOrigin ?? null,
+        currencyDestiny: currencyDestiny ?? null,
+        tz, // ecoa fuso usado
+      },
     };
   }
 
-  async findOne(id: string) {
-    const tx = await this.repo.findOne({
-      where: { id },
-      relations: ['fromCurrency', 'toCurrency'],
-    });
+  async findOne(id: string, tz = DEFAULT_TZ) {
+    const tx = await this.repo
+      .createQueryBuilder('t')
+      .leftJoin('t.user', 'u').addSelect(['u.id', 'u.name', 'u.email'])
+      .leftJoin('t.fromCurrency', 'fc').addSelect(['fc.id', 'fc.code', 'fc.name', 'fc.color'])
+      .leftJoin('t.toCurrency', 'tc').addSelect(['tc.id', 'tc.code', 'tc.name', 'tc.color'])
+      .where('t.id = :id', { id })
+      .getOne();
+
     if (!tx) throw new NotFoundException('Transação não encontrada');
-    return tx;
+    return { ...tx, createdAtLocal: toLocal24(tx.createdAt, tz) };
   }
 
   async exchange(userId: string, dto: ExchangeDto) {

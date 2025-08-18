@@ -37,18 +37,24 @@ export class Transaction {
   toCurrency: Currency;
 
   // valores (2 casas)
-  @Column({ type: 'numeric', precision: 18, scale: 2,
-    transformer: { to: round2, from: (v: string) => round2(v as any) } })
+  @Column({
+    type: 'numeric', precision: 18, scale: 2,
+    transformer: { to: round2, from: (v: string) => round2(v as any) }
+  })
   fromAmount: number;
 
   // bruto (antes da taxa)
-  @Column({ type: 'numeric', precision: 18, scale: 2,
-    transformer: { to: round2, from: (v: string) => round2(v as any) } })
+  @Column({
+    type: 'numeric', precision: 18, scale: 2,
+    transformer: { to: round2, from: (v: string) => round2(v as any) }
+  })
   toAmountGross: number;
 
   // líquido (após taxa)
-  @Column({ type: 'numeric', precision: 18, scale: 2,
-    transformer: { to: round2, from: (v: string) => round2(v as any) } })
+  @Column({
+    type: 'numeric', precision: 18, scale: 2,
+    transformer: { to: round2, from: (v: string) => round2(v as any) }
+  })
   toAmountNet: number;
 
   // rate = quantos TO valem 1 FROM (até 6 casas)
@@ -64,10 +70,12 @@ export class Transaction {
   feePercent: string;
 
   // valor da taxa na moeda destino (2 casas)
-  @Column({ type: 'numeric', precision: 18, scale: 2,
-    transformer: { to: round2, from: (v: string) => round2(v as any) } })
+  @Column({
+    type: 'numeric', precision: 18, scale: 2,
+    transformer: { to: round2, from: (v: string) => round2(v as any) }
+  })
   feeAmount: number;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 }

@@ -30,7 +30,6 @@ export class TransactionController {
 
   // lista de todos (admin)
   @Get()
-  @Roles('admin')
   async listAll(@Query() q: QueryTransactionDto) {
     return this.service.findAll(q);
   }
