@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { UserCurrency } from './entities/user-currency.entity';
 import { Currency } from '../currency/entities/currency.entity';
 
@@ -121,6 +121,36 @@ export class UserCurrencyService {
         color: c.color,
         amount: amountByCurrencyId.get(c.id) ?? 0,
       }));
+  }
+
+  private repoTx(manager: EntityManager) {
+    return manager.getRepository(UserCurrency);
+  }
+
+  async getOrCreateTx(manager: EntityManager, userId: string, currencyId: string) {
+    const r = this.repoTx(manager);
+    let uc = await r.findOne({ where: { userId, currencyId } });
+    if (!uc) {
+      uc = r.create({ userId, currencyId, amount: 0 });
+      uc = await r.save(uc);
+    }
+    return uc;
+  }
+
+  async creditTx(manager: EntityManager, userId: string, currencyId: string, amount: number) {
+    const r = this.repoTx(manager);
+    const uc = await this.getOrCreateTx(manager, userId, currencyId);
+    uc.amount = round2(Number(uc.amount) + Number(amount));
+    return r.save(uc);
+  }
+
+  async debitTx(manager: EntityManager, userId: string, currencyId: string, amount: number) {
+    const r = this.repoTx(manager);
+    const uc = await this.getOrCreateTx(manager, userId, currencyId);
+    const after = round2(Number(uc.amount) - Number(amount));
+    if (after < 0) throw new Error('Saldo insuficiente');
+    uc.amount = after;
+    return r.save(uc);
   }
 
 }

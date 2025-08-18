@@ -8,6 +8,7 @@ import { UpdateCurrencyDto } from './dto/update-currency.dto';
 
 const to6 = (n: number) => Number.isFinite(n) ? Math.round(n * 1_000_000) / 1_000_000 : NaN;
 const round2 = (n: number) => Math.round(Number(n ?? 0) * 100) / 100;
+const FEE_PERCENT = 0.005; 
 
 @Injectable()
 export class CurrencyService {
@@ -96,31 +97,55 @@ export class CurrencyService {
 
   /** Simula conversão */
   async previewConvert(fromCode: string, toCode: string, amount: number) {
-    if (amount <= 0) {
-      throw new BadRequestException('amount deve ser > 0');
-    }
-    if (fromCode === toCode) {
-      return { fromCode, toCode, amount: round2(amount), rate: 1, result: round2(amount) };
-    }
+    if (amount <= 0) throw new BadRequestException('amount deve ser > 0');
+    const amt = round2(amount);
 
     const from = await this.findByCodeOrThrow(fromCode);
     const to = await this.findByCodeOrThrow(toCode);
 
-    const fFrom = Number(from.factorToBase); // numeric -> string
+    if (from.code === to.code) {
+      // sem taxa quando mesma moeda (opcional)
+      return {
+        fromCode, toCode, amount: amt,
+        rate: 1,
+        toAmountGross: amt,
+        feePercent: FEE_PERCENT,
+        feeAmount: 0,
+        toAmountNet: amt,
+        // para compat: result = líquido
+        result: amt,
+      };
+    }
+
+    const fFrom = Number(from.factorToBase);
     const fTo = Number(to.factorToBase);
     if (!fFrom || !fTo) {
       throw new BadRequestException('factorToBase inválido para alguma moeda');
     }
 
-    const rate = fTo / fFrom;
-    const result = round2(fFrom / fTo * amount);
+    // rate = quantos TO valem 1 FROM
+    const rate = to6(fTo / fFrom);
+
+    // bruto (antes da taxa)
+    const toAmountGross = round2(amt * rate);
+
+    // taxa (0,5%) na moeda destino
+    const feeAmount = round2(toAmountGross * FEE_PERCENT);
+
+    // líquido (após taxa)
+    const toAmountNet = round2(toAmountGross - feeAmount);
 
     return {
       fromCode,
       toCode,
-      amount: round2(amount),
-      rate,
-      result,
+      amount: amt,
+      rate,                 // TO por 1 FROM
+      toAmountGross,        // bruto (2 casas)
+      feePercent: FEE_PERCENT,
+      feeAmount,            // 2 casas
+      toAmountNet,          // líquido (2 casas)
+      // manter "result" para compatibilidade (líquido)
+      result: toAmountNet,
     };
   }
 }

@@ -94,6 +94,11 @@ export class UserService {
     return withBalances;
   }
 
+  /** Busca usuário por email SEM filtrar isSystem (para autenticação) */
+  async findAuthUserByEmail(email: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { email } });
+  }
+
   // BUSCAR por id (exclui isSystem)
   async findOne(id: string): Promise<UserWithBalances> {
     const user = await this.userRepository.findOne({ where: { id, isSystem: false } });

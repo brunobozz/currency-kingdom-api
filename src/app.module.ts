@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { CurrencyModule } from './currency/currency.module';
+import { TransactionModule } from './transaction/transaction.module';
 
 @Module({
   imports: [
@@ -25,7 +26,8 @@ import { CurrencyModule } from './currency/currency.module';
     }),
     AuthModule,
     UserModule,
-    CurrencyModule
+    CurrencyModule,
+    TransactionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

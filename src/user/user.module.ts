@@ -12,6 +12,6 @@ import { UserCurrencyModule } from '../user-currency/user-currency.module';
   imports: [TypeOrmModule.forFeature([User]), CurrencyModule, UserCurrencyModule],
   controllers: [UserController],
   providers: [UserService, BankService],
-  exports: [UserService, BankService],
+  exports: [UserService, BankService, TypeOrmModule],
 })
 export class UserModule { }
