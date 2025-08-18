@@ -1,21 +1,26 @@
-import { Controller, Get, Query, Param, Post, Body, Req } from '@nestjs/common';
+import { Controller, Get, Query, Param, Post, Body, UseGuards } from '@nestjs/common';
 import { UserCurrencyService } from './user-currency.service';
 import { QueryUserCurrencyDto } from './dto/query-user-currency.dto';
 import { UpsertUserCurrencyDto } from './dto/upsert-user-currency.dto';
 import { CreditDto, DebitDto } from './dto/credit-debit.dto';
+import { UserId } from 'src/auth/decorators/user-id.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles()
 @Controller('user-currencies')
 export class UserCurrencyController {
   constructor(private readonly service: UserCurrencyService) { }
-
+  
   @Get()
   async list(@Query() q: QueryUserCurrencyDto) {
     return this.service.list(q);
   }
 
   @Get('me')
-  async myBalances(@Req() req: any) {
-    const userId = req.user?.id ?? req.user?.sub;
+  async myBalances(@UserId() userId: string) {
     return this.service.listAllForUser(userId);
   }
 

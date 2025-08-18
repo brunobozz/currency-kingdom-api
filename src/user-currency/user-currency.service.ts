@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { UserCurrency } from './entities/user-currency.entity';
@@ -84,6 +84,7 @@ export class UserCurrencyService {
   }
 
   async listAllForUser(userId: string) {
+    if (!userId) throw new BadRequestException('Token inválido: userId ausente');
     // pega saldos existentes do usuário + metadados da moeda
     const rows = await this.repo
       .createQueryBuilder('uc')
